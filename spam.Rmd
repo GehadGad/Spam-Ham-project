@@ -1,0 +1,195 @@
+---
+title: "Project 4: Document Classification"
+output:  html_document
+---
+
+## Gehad Gad
+
+## 4/26/2020
+
+
+## Instruction 
+
+It can be useful to be able to classify new "test" documents using already classified "training" documents.  A common example is using a corpus of labeled spam and ham (non-spam) e-mails to predict whether or not a new document is spam.  
+
+For this project, you can start with a spam/ham dataset, then predict the class of new documents (either withheld from the training dataset or from another source such as your own spam folder). 
+
+
+
+```{r}
+#Import libraries
+library(dplyr)
+library(corpus)
+library(tm)
+library(NLP)
+library(SnowballC)
+library(randomForest)
+library(e1071)
+library(caret)
+```
+
+
+```{r}
+#Import the data
+
+#Data source: https://www.kaggle.com/team-ai/spam-text-message-classification/version/1#SPAM%20text%20message%2020170820%20-%20Data.csv
+
+data <- read.csv ("https://github.com/GehadGad/Spam-and-ham-data/raw/master/Data.csv", header=TRUE, sep=",", quote='\"\"', stringsAsFactors=FALSE)
+
+#data <- read.csv("Data.csv", header=TRUE, sep=",", quote='\"\"', stringsAsFactors=FALSE)
+
+```
+
+```{r}
+#Since the data is big, I selected the first 300 only.
+
+data[2,]
+data = data[1:300,]
+```
+
+
+```{r}
+# Get the probability of spam and ham:
+
+data$Category <- factor(data$Category)
+
+prop.table(table(data$Category))
+
+```
+
+
+```{r}
+#Separat each word.
+
+corpus = VCorpus(VectorSource(data$Message))
+as.character(corpus[[1]])
+
+
+```
+
+```{r}
+#Change all words to lower case.
+corpus = tm_map(corpus, content_transformer(tolower))
+
+#Remove numebrs
+corpus = tm_map(corpus, removeNumbers)
+
+#Remove punctuation.
+
+corpus = tm_map(corpus, removePunctuation)
+
+#Remove stop words
+corpus = tm_map(corpus, removeWords, stopwords("english"))
+
+#Stemming the words
+corpus = tm_map(corpus, stemDocument)
+corpus = tm_map(corpus, stripWhitespace)
+as.character(corpus[[1]])
+```
+```{r}
+#Remove words which are unrepetitive
+dtm = DocumentTermMatrix(corpus)
+dtm
+```
+
+```{r}
+
+dtm = removeSparseTerms(dtm, 0.9999)
+
+dim(dtm)
+
+```
+
+```{r}
+
+inspect(dtm[40:50, 10:15])
+
+```
+
+```{r}
+#Change 0 and 1 to yes and no.
+convert_count <- function(x) {
+  y <- ifelse(x > 0, 1,0)
+  y <- factor(y, levels=c(0,1), labels=c("No", "Yes"))
+  y
+}
+
+# Apply the convert_count function to get final training and testing DTMs
+datasetNB <- apply(dtm, 2, convert_count)
+
+dataset = as.data.frame(as.matrix(datasetNB))
+```
+
+```{r}
+#Frequency of columns.
+
+freq<- sort(colSums(as.matrix(dtm)), decreasing=TRUE)
+head(freq, 10)
+```
+
+```{r}
+
+findFreqTerms(dtm, lowfreq=60) 
+
+```
+
+
+```{r}
+dataset$Class = data$Category
+```
+
+
+```{r}
+#Data splitting.
+
+set.seed(222)
+split = sample(2,nrow(dataset),prob = c(0.75,0.25),replace = TRUE)
+train_set = dataset[split == 1,]
+test_set = dataset[split == 2,] 
+
+prop.table(table(train_set$Class))
+```
+
+```{r}
+#The probability of spam and ham 
+prop.table(table(test_set$Class))
+
+```
+
+
+```{r}
+#Run randomforest.
+
+rf_classifier = randomForest(x = train_set,
+                          y = train_set$Class,
+                          ntree = 300)
+
+```
+
+
+```{r}
+#Prediction
+rf_pred = predict(rf_classifier, newdata = test_set)
+
+```
+
+
+
+```{r}
+#Run confusion matrix
+
+confusionMatrix(table(rf_pred,test_set$Class))
+
+```
+
+Confusion matrix gives accuracy of 94%
+
+```{r}
+#Run Support vector machine.
+
+svm_clf = svm(Class~.,data = train_set)
+svm_pred = predict(svm_clf,test_set)
+confusionMatrix(svm_pred,test_set$Class)
+```
+
+Support vector machine give 84%
